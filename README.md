@@ -1,5 +1,8 @@
 # Push to Hold Backend
 
+![CI](https://github.com/KhademOHAli1/push-to-hold-backend/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/github/license/KhademOHAli1/push-to-hold-backend)
+
 NestJS + Prisma + PostgreSQL + Redis backend for the Push to Hold democracy index app.
 
 ## 🚀 Quick Start
@@ -41,7 +44,7 @@ Swagger UI: **http://localhost:4000/api/docs**
 ## 📁 Project Structure
 
 ```
-backend/
+.
 ├── src/
 │   ├── main.ts                    # App bootstrap
 │   ├── app.module.ts              # Root module
@@ -102,3 +105,11 @@ npm run prisma:migrate  # Run migrations
 npm run prisma:seed     # Seed sample data
 npm run prisma:studio   # Database GUI
 ```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
