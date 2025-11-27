@@ -1,0 +1,27 @@
+# Add 'documentation' label to any changes within 'docs' folder or any .md file
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
+
+# Add 'source' label to any changes within 'src' folder
+source:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/**"
+
+# Add 'test' label to any changes within 'test' folder
+test:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "test/**"
+          - "**/*.spec.ts"
+
+# Add 'infra' label to any changes to docker or config files
+infra:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docker-compose*.yml"
+          - "Dockerfile*"
+          - ".github/**"
