@@ -27,8 +27,16 @@
     "barcode",
     "api"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "KhademOHAli1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KhademOHAli1/push-to-hold-backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/KhademOHAli1/push-to-hold-backend/issues"
+  },
+  "homepage": "https://github.com/KhademOHAli1/push-to-hold-backend#readme",
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/common": "^11.1.9",
