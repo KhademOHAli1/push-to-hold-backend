@@ -1,0 +1,25 @@
+version: '3.8'
+
+# Development override - use with: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # ================================
+  # PostgreSQL Database (Dev)
+  # ================================
+  postgres:
+    ports:
+      - "5432:5432"
+
+  # ================================
+  # NestJS Backend API (Dev with hot reload)
+  # ================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run start:dev

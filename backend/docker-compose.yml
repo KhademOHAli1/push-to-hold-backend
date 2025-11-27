@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # ================================
+  # PostgreSQL Database
+  # ================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: pth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pushtohold}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pushtohold_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-pushtohold}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pushtohold}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ================================
+  # Redis Cache (for sub-100ms responses)
+  # ================================
+  redis:
+    image: redis:7-alpine
+    container_name: pth-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ================================
+  # NestJS Backend API
+  # ================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pth-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pushtohold}:${POSTGRES_PASSWORD:-pushtohold_secret}@postgres:5432/${POSTGRES_DB:-pushtohold}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/api/v1/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # ================================
+  # Prisma Studio (Dev only)
+  # ================================
+  prisma-studio:
+    image: node:20-alpine
+    container_name: pth-prisma-studio
+    profiles:
+      - dev
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pushtohold}:${POSTGRES_PASSWORD:-pushtohold_secret}@postgres:5432/${POSTGRES_DB:-pushtohold}?schema=public
+    ports:
+      - "5555:5555"
+    volumes:
+      - .:/app
+    command: sh -c "npm install && npx prisma studio --port 5555 --hostname 0.0.0.0"
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: pushtohold-network

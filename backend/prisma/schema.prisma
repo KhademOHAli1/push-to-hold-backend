@@ -1,0 +1,441 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USERS & AUTHENTICATION
+// ============================================
+
+enum UserRole {
+  consumer
+  company_rep
+  admin
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         UserRole  @default(consumer)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  // Relations
+  profile               UserProfile?
+  companyMemberships    CompanyMembership[]
+  scans                 Scan[]
+  companyFollows        CompanyFollow[]
+  addedEvidence         CompanyEvidence[]       @relation("AddedByUser")
+  statusChanges         CompanyStatusHistory[]  @relation("ChangedByUser")
+  createdPledges        CompanyPledge[]         @relation("CreatedByUser")
+  reviewedPledges       CompanyPledge[]         @relation("ReviewedByUser")
+  questionEvents        UserQuestionEvent[]
+  answeredQuestions     CompanyQuestion[]       @relation("AnsweredByUser")
+  submittedCorrections  CompanyCorrectionRequest[] @relation("SubmittedByUser")
+  resolvedCorrections   CompanyCorrectionRequest[] @relation("ResolvedByUser")
+  productOverrides      ProductCompanyOverride[]
+  auditLogs             AuditLog[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  userId         String   @id @map("user_id") @db.Uuid
+  displayName    String?  @map("display_name")
+  locale         String?  @default("de-DE")
+  marketingOptIn Boolean  @default(false) @map("marketing_opt_in")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+// ============================================
+// COMPANIES
+// ============================================
+
+enum DemocracyStatus {
+  green
+  yellow
+  red
+}
+
+enum MembershipRole {
+  rep
+  legal
+  admin
+}
+
+model Company {
+  id                String          @id @default(uuid()) @db.Uuid
+  officialName      String          @map("official_name")
+  displayName       String?         @map("display_name")
+  countryCode       String          @map("country_code") @db.Char(2)
+  sector            String?
+  sizeBracket       String?         @map("size_bracket")
+  websiteUrl        String?         @map("website_url")
+  hqAddress         String?         @map("hq_address")
+  democracyStatus   DemocracyStatus @default(yellow) @map("democracy_status")
+  democracyScore    Int?            @map("democracy_score")
+  statusReasonShort String?         @map("status_reason_short")
+  lastReviewAt      DateTime?       @map("last_review_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  externalIds        CompanyExternalId[]
+  brands             Brand[]
+  memberships        CompanyMembership[]
+  pledges            CompanyPledge[]
+  evidence           CompanyEvidence[]
+  statusHistory      CompanyStatusHistory[]
+  questions          CompanyQuestion[]
+  corrections        CompanyCorrectionRequest[]
+  scans              Scan[]
+  follows            CompanyFollow[]
+  productOverrides   ProductCompanyOverride[]
+
+  @@map("companies")
+}
+
+model CompanyExternalId {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @map("company_id") @db.Uuid
+  system     String // 'opencorporates', 'handelsregister', etc.
+  externalId String @map("external_id")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([system, externalId])
+  @@map("company_external_ids")
+}
+
+model CompanyMembership {
+  id         String         @id @default(uuid()) @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  companyId  String         @map("company_id") @db.Uuid
+  role       MembershipRole @default(rep)
+  isVerified Boolean        @default(false) @map("is_verified")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@map("company_memberships")
+}
+
+// ============================================
+// BRANDS & PRODUCTS
+// ============================================
+
+model Brand {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  companyId  String?  @map("company_id") @db.Uuid
+  websiteUrl String?  @map("website_url")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  company  Company?  @relation(fields: [companyId], references: [id])
+  products Product[]
+
+  @@unique([name, companyId])
+  @@map("brands")
+}
+
+model Product {
+  gtin            String    @id @db.VarChar(14) // EAN-13 etc.
+  name            String?
+  brandId         String?   @map("brand_id") @db.Uuid
+  category        String?
+  sourceSystem    String?   @map("source_system") // 'openfoodfacts', 'openproductfacts', 'manual'
+  sourceProductId String?   @map("source_product_id")
+  imageUrl        String?   @map("image_url")
+  lastSyncedAt    DateTime? @map("last_synced_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  brand          Brand?                  @relation(fields: [brandId], references: [id])
+  scans          Scan[]
+  companyOverride ProductCompanyOverride?
+
+  @@map("products")
+}
+
+model ProductCompanyOverride {
+  gtin      String   @id @db.VarChar(14)
+  companyId String   @map("company_id") @db.Uuid
+  reason    String?
+  createdBy String?  @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [gtin], references: [gtin], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id])
+  user    User?   @relation(fields: [createdBy], references: [id])
+
+  @@map("product_company_overrides")
+}
+
+// ============================================
+// DEMOCRACY INDEX: PLEDGES, EVIDENCE, STATUS HISTORY
+// ============================================
+
+model Pledge {
+  id           String   @id @default(uuid()) @db.Uuid
+  version      String   // '1.0', '1.1', etc.
+  title        String
+  bodyMarkdown String   @map("body_markdown")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  companyPledges CompanyPledge[]
+
+  @@map("pledges")
+}
+
+enum PledgeStatus {
+  pending_review
+  approved
+  rejected
+  withdrawn
+}
+
+model CompanyPledge {
+  id               String       @id @default(uuid()) @db.Uuid
+  companyId        String       @map("company_id") @db.Uuid
+  pledgeId         String       @map("pledge_id") @db.Uuid
+  status           PledgeStatus @default(pending_review)
+  signedAt         DateTime     @map("signed_at")
+  approvedAt       DateTime?    @map("approved_at")
+  signatoryName    String?      @map("signatory_name")
+  signatoryRole    String?      @map("signatory_role")
+  pledgeDocUrl     String?      @map("pledge_doc_url")
+  createdByUserId  String?      @map("created_by_user_id") @db.Uuid
+  reviewedByUserId String?      @map("reviewed_by_user_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at")
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pledge     Pledge  @relation(fields: [pledgeId], references: [id])
+  createdBy  User?   @relation("CreatedByUser", fields: [createdByUserId], references: [id])
+  reviewedBy User?   @relation("ReviewedByUser", fields: [reviewedByUserId], references: [id])
+
+  @@map("company_pledges")
+}
+
+enum EvidenceType {
+  pledge
+  company_statement
+  news_article
+  court_decision
+  gov_report
+  association_membership
+  donation_record
+  other
+}
+
+model CompanyEvidence {
+  id            String       @id @default(uuid()) @db.Uuid
+  companyId     String       @map("company_id") @db.Uuid
+  type          EvidenceType
+  title         String
+  sourceUrl     String?      @map("source_url")
+  sourceName    String?      @map("source_name")
+  sourceDate    DateTime?    @map("source_date") @db.Date
+  collectedAt   DateTime     @default(now()) @map("collected_at")
+  addedByUserId String?      @map("added_by_user_id") @db.Uuid
+  impact        Int?         // e.g. +5, -10 (weighting for scoring)
+  notesMarkdown String?      @map("notes_markdown")
+  isPublic      Boolean      @default(true) @map("is_public")
+  isDisputed    Boolean      @default(false) @map("is_disputed")
+  disputeNotes  String?      @map("dispute_notes")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  addedBy   User?   @relation("AddedByUser", fields: [addedByUserId], references: [id])
+
+  @@map("company_evidence")
+}
+
+model CompanyStatusHistory {
+  id              String          @id @default(uuid()) @db.Uuid
+  companyId       String          @map("company_id") @db.Uuid
+  previousStatus  DemocracyStatus @map("previous_status")
+  newStatus       DemocracyStatus @map("new_status")
+  reasonMarkdown  String?         @map("reason_markdown")
+  evidenceIds     String[]        @map("evidence_ids") @db.Uuid
+  changedByUserId String          @map("changed_by_user_id") @db.Uuid
+  changedAt       DateTime        @default(now()) @map("changed_at")
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  changedBy User    @relation("ChangedByUser", fields: [changedByUserId], references: [id])
+
+  @@map("company_status_history")
+}
+
+// ============================================
+// QUESTIONS & CORRECTIONS
+// ============================================
+
+model QuestionTemplate {
+  id       String  @id @default(uuid()) @db.Uuid
+  code     String  @unique // 'stance_on_extremist_cooperation'
+  text     String
+  isActive Boolean @default(true) @map("is_active")
+
+  companyQuestions   CompanyQuestion[]
+  userQuestionEvents UserQuestionEvent[]
+
+  @@map("question_templates")
+}
+
+enum QuestionStatus {
+  pending
+  answered
+  dismissed
+}
+
+model CompanyQuestion {
+  id               String         @id @default(uuid()) @db.Uuid
+  companyId        String         @map("company_id") @db.Uuid
+  templateId       String?        @map("template_id") @db.Uuid
+  questionText     String         @map("question_text")
+  status           QuestionStatus @default(pending)
+  answerMarkdown   String?        @map("answer_markdown")
+  answeredByUserId String?        @map("answered_by_user_id") @db.Uuid
+  aggregatedCount  Int            @default(1) @map("aggregated_count")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  template   QuestionTemplate? @relation(fields: [templateId], references: [id])
+  answeredBy User?             @relation("AnsweredByUser", fields: [answeredByUserId], references: [id])
+
+  @@map("company_questions")
+}
+
+model UserQuestionEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  templateId String?  @map("template_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User?             @relation(fields: [userId], references: [id])
+  template QuestionTemplate? @relation(fields: [templateId], references: [id])
+
+  @@map("user_question_events")
+}
+
+enum CorrectionStatus {
+  open
+  in_review
+  resolved
+  rejected
+}
+
+model CompanyCorrectionRequest {
+  id                    String           @id @default(uuid()) @db.Uuid
+  companyId             String           @map("company_id") @db.Uuid
+  submittedByUserId     String           @map("submitted_by_user_id") @db.Uuid
+  status                CorrectionStatus @default(open)
+  subject               String
+  descriptionMarkdown   String           @map("description_markdown")
+  relatedEvidenceIds    String[]         @map("related_evidence_ids") @db.Uuid
+  relatedStatusChangeId String?          @map("related_status_change_id") @db.Uuid
+  resolutionMarkdown    String?          @map("resolution_markdown")
+  resolvedByUserId      String?          @map("resolved_by_user_id") @db.Uuid
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  submittedBy User    @relation("SubmittedByUser", fields: [submittedByUserId], references: [id])
+  resolvedBy  User?   @relation("ResolvedByUser", fields: [resolvedByUserId], references: [id])
+
+  @@map("company_correction_requests")
+}
+
+// ============================================
+// SCANS, FOLLOWS & ANALYTICS
+// ============================================
+
+model Scan {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  gtin        String   @db.VarChar(14)
+  companyId   String?  @map("company_id") @db.Uuid
+  appPlatform String?  @map("app_platform") // 'ios', 'android', 'web'
+  countryCode String?  @map("country_code") @db.Char(2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user    User?    @relation(fields: [userId], references: [id])
+  product Product  @relation(fields: [gtin], references: [gtin])
+  company Company? @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@map("scans")
+}
+
+model CompanyFollow {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@map("company_follows")
+}
+
+// ============================================
+// AUDIT LOG
+// ============================================
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id") @db.Uuid
+  payloadJson Json?    @map("payload_json")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@map("audit_log")
+}
+
+// ============================================
+// COMPANY CLAIMS (for portal)
+// ============================================
+
+enum ClaimStatus {
+  pending
+  approved
+  rejected
+}
+
+model CompanyClaim {
+  id         String      @id @default(uuid()) @db.Uuid
+  userId     String      @map("user_id") @db.Uuid
+  companyId  String      @map("company_id") @db.Uuid
+  proofType  String      @map("proof_type") // 'domain_email', 'document', etc.
+  proofValue String?     @map("proof_value")
+  status     ClaimStatus @default(pending)
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  @@map("company_claims")
+}
